@@ -130,7 +130,7 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%;}
   </button>
   <div class="hud">
     <div class="hud-label">Лопнуто пузырей</div>
-    <div class="hud-score" id="bubble-score" style="color:#7dd3fc;">&#x1FAA7; 0</div>
+    <div class="hud-score" id="bubble-score" style="color:#7dd3fc;">🎈 0</div>
   </div>
   <canvas id="bubble-canvas"></canvas>
 </div>
@@ -433,7 +433,7 @@ function spawnBubbleBatch(n) {
 
 function popBubble(b) {
   bubbleCount++;
-  document.getElementById('bubble-score').textContent = '\u1FAA7 ' + bubbleCount;
+  document.getElementById('bubble-score').textContent = '🎈 ' + bubbleCount;
   bBigText.push({x:b.x, y:b.y, text:String(bubbleCount), vy:-2.5, alpha:1, size:Math.min(80,28+bubbleCount.toString().length*8)});
   for(let i=0;i<12;i++) {
     if(bParticles.length >= MAX_PARTICLES) break;
@@ -623,10 +623,10 @@ let keysDown = {};
 let mouseX = 0, mouseY = 0;
 let lasers = [], meteors = [], mParticles = [], mDebris = [];
 let meteorDestroyed = 0;
-let missedMeteors = 0; // === NEW: Счетчик пропусков ===
-let isGameOver = false; // === NEW: Состояние игры ===
-let isGameWon = false; // === NEW: Флаг победы ===
-let gameOverTime = 0; // === NEW: Таймер задержки экрана ===
+let missedMeteors = 0;
+let isGameOver = false;
+let isGameWon = false;
+let gameOverTime = 0;
 
 let meteorAnimId = null;
 let meteorSpawnTimer = null;
@@ -640,6 +640,10 @@ let ultraMode = false;
 let ultraEndTime = 0;
 const ULTRA_DURATION = 2000;
 
+let empCharges = 5;
+let empWaves = [];
+let empWarningTime = 0; // === NEW: Таймер ошибки (нет зарядов) ===
+
 const LASER_COLORS = ['#ff3366','#33aaff','#33ff88','#ffaa00','#cc44ff','#00ffee','#ff6600','#ffffff'];
 
 function getMeteorHP(r) {
@@ -651,9 +655,6 @@ function getMeteorHP(r) {
 function initMeteorMode() {
   resizeCanvas(MC);
   mouseX = W()/2; mouseY = H()/2;
-  saucer.x = W()/2;
-  saucer.y = H()*0.88;
-  saucer.angle = -Math.PI/2;
   
   lasers = []; meteors = []; mParticles = []; mDebris = [];
   meteorDestroyed = 0;
@@ -661,7 +662,10 @@ function initMeteorMode() {
   isGameOver = false;
   ultraMode = false;
   isGameWon = false;
-  gameOverTime = 0; // === NEW: Обнуляем таймер при старте ===
+  gameOverTime = 0;
+  empCharges = 5; 
+  empWaves = [];
+  empWarningTime = 0; // === NEW: Сброс таймера ===
   keysDown = {};
   
   document.getElementById('destroyed-count').textContent = '\u2604\uFE0F 0';
@@ -673,7 +677,7 @@ function initMeteorMode() {
   }));
 
   if (meteorSpawnTimer) clearInterval(meteorSpawnTimer);
-  meteorSpawnTimer = setInterval(spawnMeteor, 1200); // Спавн чуть чаще
+  meteorSpawnTimer = setInterval(spawnMeteor, 1200);
   spawnMeteorBatch(4);
 
   document.addEventListener('keydown', mKeyDown);
@@ -713,11 +717,17 @@ function stopMeteorMode() {
 
 function mKeyDown(e) {
   keysDown[e.key] = true;
-  if (e.key === ' ' || e.key === 'Enter') { isMouseDown = true; ensureAudioCtx(); }
+  if (e.key === ' ' && !e.repeat) {
+    fireEMP();
+    ensureAudioCtx();
+  } else if (e.key === 'Enter' || e.key === 'Shift') {
+    isMouseDown = true;
+    ensureAudioCtx();
+  }
 }
 function mKeyUp(e) {
   keysDown[e.key] = false;
-  if (e.key === ' ' || e.key === 'Enter') isMouseDown = false;
+  if (e.key === 'Enter' || e.key === 'Shift') isMouseDown = false;
 }
 
 function mMouseMove(e) {
@@ -741,22 +751,55 @@ function mTouchStart(e) {
 }
 function mTouchEnd() { isMouseDown = false; }
 
+// === NEW: Звук ошибки (нет зарядов) ===
+function playEmptySound() {
+  try {
+    const actx = window.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, actx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, actx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.2, actx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(actx.destination);
+    osc.start();
+    osc.stop(actx.currentTime + 0.2);
+  } catch(e) {}
+}
+
+function fireEMP() {
+  if (isGameOver) return;
+  // === NEW: Логика провала выстрела (тряска и звук) ===
+  if (empCharges <= 0) {
+    empWarningTime = Date.now(); // Засекаем время ошибки
+    playEmptySound();            // Воспроизводим звук ошибки
+    return;
+  }
+  
+  empCharges--;
+  const cx = W() / 2;
+  const pR = Math.max(W(), H()) * 1.5;
+  const cy = H() + pR - 70;
+  empWaves.push({ cx, cy, r: pR, dr: 18, alpha: 1.0 });
+  playUltraSound(); 
+  doScreenShake(MC, 12, 500);
+}
+
 function spawnMeteor() {
   if (meteors.length >= 15 || isGameOver) return;
   
   const r = 15 + Math.random()*25;
-  // Спавн строго сверху
   const x = Math.random() * (W() - r*2) + r;
   const y = -r * 2;
   
-  // === NEW: Целимся в тарелку с небольшим разбросом ===
-  // Берем координату тарелки и добавляем случайное отклонение +/- 150px
   const targetX = saucer.x + (Math.random() - 0.5) * 300;
   const targetY = saucer.y;
   
-  // Вычисляем угол от метеорита до цели
   const angle = Math.atan2(targetY - y, targetX - x);
-  const speed = Math.random() * 2.0 + 1.5;
+  const speed = (Math.random() * 2.0 + 1.5) * 0.85;
   
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
@@ -792,14 +835,13 @@ function spawnMeteor() {
   });
 }
 
-
 function spawnMeteorBatch(n) {
   for(let i=0;i<n;i++) spawnMeteor();
 }
 
 function fireLaser() {
   laserColor = (laserColor+1) % LASER_COLORS.length;
-  const angle = -Math.PI/2;
+  const angle = saucer.angle; 
   const nx = Math.cos(angle), ny = Math.sin(angle);
   lasers.push({
     x: saucer.x + nx*saucer.r, y: saucer.y + ny*saucer.r,
@@ -813,7 +855,12 @@ function fireLaser() {
 function activateUltraMode() {
   ultraMode = true;
   ultraEndTime = Date.now() + ULTRA_DURATION;
-  document.getElementById('ultra-hud').classList.add('active');
+  
+  const hud = document.getElementById('ultra-hud');
+  hud.style.top = 'auto';
+  hud.style.bottom = '15%';
+  hud.classList.add('active');
+  
   playUltraSound();
   doScreenShake(MC, 8, 300);
 }
@@ -835,36 +882,36 @@ function doScreenShake(el, intensity, duration) {
 
 function drawUltraBeam(ctx) {
   const bw = ultraMode ? 20 + Math.sin(Date.now()*0.015)*10 : 0;
-  const beamX = saucer.x;
-  const beamY1 = saucer.y - saucer.r;
-  const beamY2 = 0;
+  
+  ctx.save();
+  ctx.translate(saucer.x, saucer.y);
+  ctx.rotate(saucer.angle + Math.PI/2);
 
-  const gradient = ctx.createLinearGradient(beamX-bw, 0, beamX+bw, 0);
+  const gradient = ctx.createLinearGradient(-bw, 0, bw, 0);
   gradient.addColorStop(0, 'rgba(255,200,0,0)');
   gradient.addColorStop(0.2, 'rgba(255,100,0,0.4)');
   gradient.addColorStop(0.5, 'rgba(255,255,255,0.9)');
   gradient.addColorStop(0.8, 'rgba(255,100,0,0.4)');
   gradient.addColorStop(1, 'rgba(255,200,0,0)');
 
-  ctx.save();
+  const beamLength = -H()*1.5; 
+
   ctx.globalAlpha = 0.85 + Math.sin(Date.now()*0.02)*0.15;
   ctx.fillStyle = gradient;
-  ctx.fillRect(beamX-bw, beamY2, bw*2, beamY1-beamY2);
+  ctx.fillRect(-bw, beamLength, bw*2, -beamLength);
 
   ctx.globalAlpha = 1;
   const coreW = bw*0.25;
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
   ctx.shadowBlur = 30; ctx.shadowColor = '#fff';
-  ctx.fillRect(beamX-coreW, beamY2, coreW*2, beamY1-beamY2);
+  ctx.fillRect(-coreW, beamLength, coreW*2, -beamLength);
   ctx.shadowBlur = 0;
   ctx.restore();
 
   for(let j=meteors.length-1; j>=0; j--) {
     const m = meteors[j];
     if (!m || m.markedForDeath) continue;
-
-    if (Math.abs(m.x - saucer.x) < m.r + bw && m.y < saucer.y) {
-      // === FIX: Не удаляем сразу, а помечаем на смерть ===
+    if (Math.abs(m.x - saucer.x) < m.r + bw*1.5 && m.y < saucer.y) {
       m.markedForDeath = true;
       for(let k=0;k<8;k++) {
         if(mParticles.length > 300) break;
@@ -888,12 +935,29 @@ function meteorLoop() {
     mCtx.fill();
   });
 
+  const cx = W() / 2;
+  const pR = Math.max(W(), H()) * 1.5; 
+  const cy = H() + pR - 70; 
+
+  mCtx.save();
+  mCtx.beginPath();
+  mCtx.arc(cx, cy, pR, Math.PI, Math.PI * 2);
+  const pGrad = mCtx.createRadialGradient(cx, cy, pR - 100, cx, cy, pR);
+  pGrad.addColorStop(0, '#000000');
+  pGrad.addColorStop(0.8, '#0a1020');
+  pGrad.addColorStop(1, '#204060');
+  mCtx.fillStyle = pGrad;
+  mCtx.fill();
+  mCtx.strokeStyle = 'rgba(100, 200, 255, 0.5)';
+  mCtx.lineWidth = 3;
+  mCtx.shadowColor = '#64c8ff';
+  mCtx.shadowBlur = 15;
+  mCtx.stroke();
+  mCtx.restore();
+
   if (isGameOver) {
-    // Если время еще не засекали - фиксируем текущий момент
     if (gameOverTime === 0) {
       gameOverTime = Date.now();
-      
-      // === NEW: Принудительно выключаем интерфейс Ultra Mode ===
       ultraMode = false;
       document.getElementById('ultra-hud').classList.remove('active');
     }
@@ -910,7 +974,6 @@ function meteorLoop() {
     mCtx.font = '24px sans-serif';
     mCtx.fillText(`Уничтожено: ${meteorDestroyed} / 1000 | Пропущено: ${missedMeteors}`, W()/2, H()/2 + 20);
     
-    // Ждем 1.5 секунды (1500 мс) перед тем, как разрешить рестарт
     if (Date.now() - gameOverTime > 1500) {
       mCtx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() * 0.003));
       mCtx.fillText('Нажмите (или коснитесь) чтобы начать заново', W()/2, H()/2 + 80);
@@ -920,20 +983,60 @@ function meteorLoop() {
         setTimeout(initMeteorMode, 200);
       }
     }
-
     meteorAnimId = requestAnimationFrame(meteorLoop);
     return;
+  }
+
+  for (let i = empWaves.length - 1; i >= 0; i--) {
+    const w = empWaves[i];
+    w.r += w.dr; 
+    w.alpha -= 0.01; 
+    if (w.alpha <= 0) { empWaves.splice(i, 1); continue; }
+
+    mCtx.save();
+    mCtx.beginPath();
+    mCtx.arc(w.cx, w.cy, w.r, Math.PI, Math.PI * 2);
+    mCtx.strokeStyle = `rgba(100, 255, 200, ${w.alpha})`;
+    mCtx.lineWidth = 15;
+    mCtx.shadowColor = '#64ffc8';
+    mCtx.shadowBlur = 20;
+    mCtx.stroke();
+    mCtx.restore();
+
+    for (let j = meteors.length - 1; j >= 0; j--) {
+      const m = meteors[j];
+      if (!m || m.markedForDeath) continue;
+      const dist = Math.hypot(m.x - w.cx, m.y - w.cy);
+      if (dist > w.r - 30 && dist < w.r + 30) {
+        m.markedForDeath = true;
+      }
+    }
   }
 
   mCtx.fillStyle = missedMeteors >= 15 ? '#ff3366' : '#aaaaaa';
   mCtx.font = 'bold 24px sans-serif';
   mCtx.textAlign = 'center';
   mCtx.fillText(`Пропущено: ${missedMeteors} / 20`, W()/2, 40);
+  
+  // === NEW: Логика отрисовки текста зарядов с тряской и сменой цвета ===
+  let empTextColor = empCharges > 0 ? '#ffffff' : '#666666';
+  let empTextX = cx;
+  let empTextY = H() - 25;
 
-  // === NEW: Разная логика доспавна. Если UltraMode - спавним до 20, иначе до 5 ===
+  const timeSinceWarning = Date.now() - empWarningTime;
+  if (timeSinceWarning < 400) {
+    empTextColor = '#ff3333'; // Меняем цвет на красный
+    empTextX += (Math.random() - 0.5) * 10; // Тряска влево-вправо
+    empTextY += (Math.random() - 0.5) * 10; // Тряска вверх-вниз
+  }
+
+  mCtx.fillStyle = empTextColor;
+  mCtx.font = 'bold 16px sans-serif'; 
+  mCtx.textAlign = 'center'; 
+  mCtx.fillText(`💥 Супер-волны (Пробел): ${empCharges} / 5`, empTextX, empTextY);
+
   const targetMeteorCount = ultraMode ? 20 : 5;
   if (meteors.length < targetMeteorCount) {
-    // Не спавним все 20 разом, чтобы не было лага, доспавниваем по чуть-чуть
     const toSpawn = Math.min(3, targetMeteorCount - meteors.length);
     spawnMeteorBatch(toSpawn);
   }
@@ -945,8 +1048,12 @@ function meteorLoop() {
   else saucer.x += (targetX - saucer.x) * 0.08;
   
   saucer.x = Math.max(saucer.r*1.2, Math.min(W()-saucer.r*1.2, saucer.x));
-  saucer.y = H()*0.88;
-  saucer.angle = -Math.PI/2;
+  
+  const dx = saucer.x - cx;
+  const dy = Math.sqrt(pR*pR - dx*dx); 
+  saucer.y = cy - dy - saucer.r - 15; 
+  
+  saucer.angle = Math.atan2(saucer.y - cy, saucer.x - cx);
 
   if (ultraMode) {
     const remaining = ultraEndTime - Date.now();
@@ -990,7 +1097,7 @@ function meteorLoop() {
           const a=Math.random()*Math.PI*2, spd=2+Math.random()*5;
           mParticles.push({x:l.x,y:l.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:2+Math.random()*3,color:l.color,alpha:1,life:1, decay:0.025});
         }
-        if(m.hp <= 0) m.markedForDeath = true; // === FIX: Помечаем на смерть вместо мгновенного удаления ===
+        if(m.hp <= 0) m.markedForDeath = true;
         break;
       }
     }
@@ -1000,7 +1107,6 @@ function meteorLoop() {
     const m = meteors[i];
     if (!m) continue;
 
-    // === NEW: Реальное уничтожение метеоритов происходит здесь, 1 раз за кадр ===
     if (m.markedForDeath) {
       destroyMeteor(m, i);
       continue;
@@ -1020,10 +1126,18 @@ function meteorLoop() {
       });
     }
 
-    if(m.y - m.r > H()) {
-      meteors.splice(i,1);
+    const distToPlanet = Math.hypot(m.x - cx, m.y - cy);
+    if (distToPlanet <= pR + m.r - 5) {
       missedMeteors++;
-      doScreenShake(MC, 3, 100);
+      doScreenShake(MC, 15, 300);
+      
+      for(let k=0;k<25;k++) {
+        if(mParticles.length > 300) break;
+        const a=Math.random()*Math.PI*2, spd=3+Math.random()*8;
+        mParticles.push({x:m.x,y:m.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:2+Math.random()*4,color:m.color,alpha:1,life:1, decay:0.02});
+      }
+      playExplosion();
+      meteors.splice(i,1);
       if(missedMeteors >= 20) isGameOver = true;
       continue;
     }
@@ -1088,7 +1202,6 @@ function destroyMeteor(m, idx) {
   meteorDestroyed++;
   document.getElementById('destroyed-count').textContent = '\u2604\uFE0F ' + meteorDestroyed;
 
-  // === NEW: Условие победы (1000 метеоритов) ===
   if (meteorDestroyed >= 1000) {
     isGameOver = true;
     isGameWon = true;
@@ -1096,7 +1209,7 @@ function destroyMeteor(m, idx) {
   
   const debrisCount = 10 + Math.floor(m.r * 0.4);
   for(let i=0;i<debrisCount;i++) {
-    if(mDebris.length > 150) break; // === FIX: Лимит осколков ===
+    if(mDebris.length > 150) break;
     const a=(i/debrisCount)*Math.PI*2+(Math.random()-0.5)*0.8;
     const spd=3+Math.random()*6;
     const pieceR=3+Math.random()*m.r*0.35;
@@ -1108,7 +1221,7 @@ function destroyMeteor(m, idx) {
   }
   
   for(let i=0;i<25;i++) {
-    if(mParticles.length > 300) break; // === FIX: Лимит искр ===
+    if(mParticles.length > 300) break;
     const a=Math.random()*Math.PI*2, spd=4+Math.random()*7;
     mParticles.push({x:m.x,y:m.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:2+Math.random()*4,color:m.color,alpha:1,life:1, decay:0.02});
   }
@@ -1118,20 +1231,17 @@ function destroyMeteor(m, idx) {
 
   if (m.isExplosive) {
     for(let i=0;i<20;i++) {
-      if(mParticles.length > 300) break; // === FIX: Лимит искр ===
+      if(mParticles.length > 300) break;
       const a=Math.random()*Math.PI*2, spd=4+Math.random()*10;
       mParticles.push({x:m.x,y:m.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:5+Math.random()*12,color:'rgba(255,60,0,0.9)',alpha:1,life:1, decay:0.03});
     }
     doScreenShake(MC, 12, 400);
     
     const explodeRadius = 200;
-    const toDestroy = [];
     meteors.forEach(otherM => {
-      if (Math.hypot(m.x - otherM.x, m.y - otherM.y) < explodeRadius) toDestroy.push(otherM);
-    });
-    toDestroy.forEach(tm => {
-      const tmIdx = meteors.indexOf(tm);
-      if (tmIdx !== -1) destroyMeteor(tm, tmIdx);
+      if (Math.hypot(m.x - otherM.x, m.y - otherM.y) < explodeRadius) {
+         otherM.markedForDeath = true;
+      }
     });
   }
 
@@ -1147,7 +1257,6 @@ function drawMeteor(ctx, m) {
 
   const dmg = 1 - m.hp/m.maxHp;
 
-  // Форма камня
   ctx.beginPath();
   const pts = m.verts.length;
   for(let i=0;i<pts;i++) {
@@ -1165,7 +1274,6 @@ function drawMeteor(ctx, m) {
     ctx.shadowBlur = 15;
   }
 
-  // === NEW: Линейный градиент для объема (как в прототипе) ===
   const grad = ctx.createLinearGradient(-m.r, -m.r, m.r, m.r);
   const baseL = m.lit + dmg*15;
   grad.addColorStop(0, `hsl(${m.hue},${m.sat}%,${baseL}%)`);
@@ -1175,23 +1283,20 @@ function drawMeteor(ctx, m) {
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // === NEW: Огненная обводка (атмосферное трение) ===
   ctx.strokeStyle = m.isExplosive ? '#ff3333' : `hsl(${m.hue}, 90%, 60%)`;
   ctx.lineWidth = 2 + dmg * 2;
   ctx.stroke();
 
-  // Вспышка при попадании
   const timeSinceHit = Date.now() - m.hitTime;
   if(timeSinceHit < 120) {
     ctx.fillStyle = `rgba(255,255,255,${(1 - timeSinceHit/120)*0.6})`;
     ctx.fill();
   }
 
-  // Полоска HP
   if(m.hp < m.maxHp) {
     ctx.save();
     ctx.translate(0, -m.r - 12);
-    ctx.rotate(-m.rot); // Чтобы полоска всегда была горизонтальной
+    ctx.rotate(-m.rot);
     const bw=m.r*1.8, bh=5;
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(-bw/2,-bh/2,bw,bh);
     const hpFrac = m.hp/m.maxHp;
@@ -1206,6 +1311,7 @@ function drawMeteor(ctx, m) {
 function drawSaucer(ctx, x, y, r, angle) {
   ctx.save();
   ctx.translate(x,y);
+  ctx.rotate(angle + Math.PI/2); 
 
   const glowGrad = ctx.createRadialGradient(0,r*0.3,0,0,r*0.3,r*1.5);
   glowGrad.addColorStop(0,'rgba(80,200,255,0.35)');

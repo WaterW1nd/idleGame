@@ -627,6 +627,7 @@ let missedMeteors = 0;
 let isGameOver = false;
 let isGameWon = false;
 let gameOverTime = 0;
+let restartButtonPressedTime = 0; // === NEW: Таймер анимации кнопки ===
 
 let meteorAnimId = null;
 let meteorSpawnTimer = null;
@@ -662,6 +663,7 @@ function initMeteorMode() {
   isGameOver = false;
   ultraMode = false;
   isGameWon = false;
+  restartButtonPressedTime = 0; // === NEW: Сбрасываем при старте ===
   gameOverTime = 0;
   empCharges = 5; 
   empWaves = [];
@@ -721,6 +723,11 @@ function mKeyDown(e) {
     fireEMP();
     ensureAudioCtx();
   } else if (e.key === 'Enter' || e.key === 'Shift') {
+    // === FIX: Нажатие Enter тоже запускает анимацию кнопки ===
+    if (isGameOver && Date.now() - gameOverTime > 1500) { 
+      if (restartButtonPressedTime === 0) restartButtonPressedTime = Date.now();
+      return; 
+    }
     isMouseDown = true;
     ensureAudioCtx();
   }
@@ -735,7 +742,13 @@ function mMouseMove(e) {
   const scaleX = MC.width/r.width;
   mouseX = (e.clientX-r.left)*scaleX;
 }
-function mMouseDown(e) { if(e.button===0){ isMouseDown = true; ensureAudioCtx(); } }
+function mMouseDown(e) { 
+  if(e.button===0) { 
+    if (isGameOver) { handleGameOverClick(e.clientX, e.clientY); return; } // Проверка клика по кнопке
+    isMouseDown = true; 
+    ensureAudioCtx(); 
+  } 
+}
 function mMouseUp(e) { if(e.button===0) isMouseDown = false; }
 function mTouchMove(e) {
   const r = MC.getBoundingClientRect();
@@ -743,6 +756,7 @@ function mTouchMove(e) {
   mouseX = (e.touches[0].clientX-r.left)*scaleX;
 }
 function mTouchStart(e) {
+  if (isGameOver) { handleGameOverClick(e.touches[0].clientX, e.touches[0].clientY); return; } // Проверка тапа по кнопке
   isMouseDown = true;
   const r = MC.getBoundingClientRect();
   const scaleX = MC.width/r.width;
@@ -750,6 +764,28 @@ function mTouchStart(e) {
   ensureAudioCtx();
 }
 function mTouchEnd() { isMouseDown = false; }
+
+// === NEW: Функция обработки клика строго по кнопке "Начать заново" ===
+function handleGameOverClick(clientX, clientY) {
+  if (Date.now() - gameOverTime < 1500) return; 
+  if (restartButtonPressedTime > 0) return; // Игнорируем повторные клики
+  
+  const r = MC.getBoundingClientRect();
+  const scaleX = MC.width / r.width;
+  const scaleY = MC.height / r.height;
+  const mx = (clientX - r.left) * scaleX;
+  const my = (clientY - r.top) * scaleY;
+
+  const btnW = 280;
+  const btnH = 60;
+  const btnX = W() / 2 - btnW / 2;
+  const btnY = H() / 2 + 70;
+
+  // Если попали по кнопке — запускаем таймер нажатия
+  if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
+    restartButtonPressedTime = Date.now();
+  }
+}
 
 // === NEW: Звук ошибки (нет зарядов) ===
 function playEmptySound() {
@@ -960,6 +996,10 @@ function meteorLoop() {
       gameOverTime = Date.now();
       ultraMode = false;
       document.getElementById('ultra-hud').classList.remove('active');
+      // === FIX: Сбрасываем залипание кнопок при окончании игры ===
+      isMouseDown = false;
+      isTouchFiring = false;
+      keysDown = {};
     }
 
     mCtx.fillStyle = isGameWon ? 'rgba(0, 20, 10, 0.8)' : 'rgba(0, 0, 10, 0.8)';
@@ -975,14 +1015,47 @@ function meteorLoop() {
     mCtx.fillText(`Уничтожено: ${meteorDestroyed} / 1000 | Пропущено: ${missedMeteors}`, W()/2, H()/2 + 20);
     
     if (Date.now() - gameOverTime > 1500) {
-      mCtx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() * 0.003));
-      mCtx.fillText('Нажмите (или коснитесь) чтобы начать заново', W()/2, H()/2 + 80);
-      mCtx.globalAlpha = 1.0;
+      // === NEW: Отрисовка кнопки с анимацией нажатия ===
+      const isPressed = restartButtonPressedTime > 0;
+      const btnW = 280;
+      const btnH = 60;
+      const btnX = W() / 2 - btnW / 2;
+      let btnY = H() / 2 + 70;
 
-      if (isMouseDown || isTouchFiring) {
-        setTimeout(initMeteorMode, 200);
+      // Если кнопка нажата
+      if (isPressed) {
+        btnY += 4; // Вдавливаем вниз на 4 пикселя
+        mCtx.fillStyle = 'rgba(255, 255, 255, 0.3)'; // Делаем светлее
+        
+        // Ждем 150 миллисекунд (чтобы анимация была видна), затем перезапускаем
+        if (Date.now() - restartButtonPressedTime > 150) {
+          initMeteorMode();
+          return;
+        }
+      } else {
+        // Обычное состояние кнопки
+        mCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       }
+
+      mCtx.beginPath();
+      if (mCtx.roundRect) {
+        mCtx.roundRect(btnX, btnY, btnW, btnH, 15);
+      } else {
+        mCtx.rect(btnX, btnY, btnW, btnH);
+      }
+      mCtx.fill();
+      
+      // Обводка (становится ярче при нажатии)
+      mCtx.strokeStyle = isPressed ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)';
+      mCtx.lineWidth = 2;
+      mCtx.stroke();
+
+      // Текст смещается вместе с кнопкой
+      mCtx.fillStyle = '#ffffff';
+      mCtx.font = 'bold 22px sans-serif';
+      mCtx.fillText('НАЧАТЬ ЗАНОВО', W()/2, btnY + 38);
     }
+    
     meteorAnimId = requestAnimationFrame(meteorLoop);
     return;
   }

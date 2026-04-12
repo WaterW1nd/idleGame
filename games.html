@@ -190,9 +190,22 @@ function goMenu() {
   if (animId) { cancelAnimationFrame(animId); animId = null; }
   stopBubbleMode();
   stopMeteorMode();
-  // === NEW: AUDIO - stop music on menu return ===
+  
+  // Остановка музыки при выходе в меню
   stopBgMusic();
   currentMode = null;
+  
+  // === FIX: Мгновенно убираем глобальные уведомления (Milestone) ===
+  const milestoneEl = document.getElementById('milestone');
+  if (milestoneEl) {
+    milestoneEl.classList.remove('show');
+  }
+  if (typeof milestoneTimeout !== 'undefined' && milestoneTimeout) {
+    clearTimeout(milestoneTimeout);
+    milestoneTimeout = null;
+  }
+  // =================================================================
+  
   showScreen('menu');
   initStars();
 }

@@ -260,7 +260,19 @@ function startBgMusic() {
     bgAudio.volume = 0.4;
   }
   bgAudio.currentTime = 0;
-  bgAudio.play().catch(() => {});
+  
+  // === FIX: Безопасный запуск для Safari ===
+  const playPromise = bgAudio.play();
+  if (playPromise !== undefined) {
+    playPromise.then(() => {
+      // Музыка пошла! Сразу заставляем Safari не глушить звуки выстрелов
+      if (typeof audioCtx !== 'undefined' && audioCtx && audioCtx.state !== 'running') {
+        audioCtx.resume();
+      }
+    }).catch(e => {
+      console.log("Автозапуск аудио заблокирован браузером", e);
+    });
+  }
 }
 
 function stopBgMusic() {
@@ -1455,8 +1467,13 @@ function drawSaucer(ctx, x, y, r, angle) {
 // =====================================================================
 let audioCtx = null;
 function ensureAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // === FIX: Будим звук, даже если Safari перевел его в 'interrupted' ===
+  if (audioCtx.state !== 'running') {
+    audioCtx.resume();
+  }
+  
   return audioCtx;
 }
 function getAudio() { return ensureAudioCtx(); }

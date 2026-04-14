@@ -704,59 +704,61 @@
             }
 
             // === AUDIO CONTEXT (FIX ДЛЯ GITHUB PAGES И БРАУЗЕРОВ) ===
-            let audioCtx = null;
+let audioCtx = null;
+let isAudioUnlocked = false;
 
-            function ensureAudioCtx() {
-                if (!audioCtx) {
-                    const AudioContext =
-                        window.AudioContext || window.webkitAudioContext;
-                    audioCtx = new AudioContext();
-                }
-                if (audioCtx.state === "suspended") {
-                    // Пытаемся запустить (игнорируем ошибку, если браузер еще упрямится)
-                    audioCtx.resume().catch(() => {});
-                }
-                return audioCtx;
-            }
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.log('Audio resume error:', e));
+    }
+    return audioCtx;
+}
 
-            // Глобальный "обход" блокировки звука (Autoplay Policy).
-            // Инициализирует аудио-движок при самом первом касании/клике по экрану.
-            function unlockAudioGlobal() {
-                const ctx = ensureAudioCtx();
-                if (ctx.state === "running") {
-                    // Как только звук успешно разблокирован, убираем эти "слушатели",
-                    // чтобы они не тратили ресурсы.
-                    document.removeEventListener(
-                        "click",
-                        unlockAudioGlobal,
-                        true,
-                    );
-                    document.removeEventListener(
-                        "touchstart",
-                        unlockAudioGlobal,
-                        true,
-                    );
-                    document.removeEventListener(
-                        "keydown",
-                        unlockAudioGlobal,
-                        true,
-                    );
-                }
-            }
+function unlockAudioGlobal() {
+    if (isAudioUnlocked) return;
+    
+    const ctx = ensureAudioCtx();
 
-            // Слушаем вообще всё, что делает пользователь на странице
-            document.addEventListener("click", unlockAudioGlobal, {
-                capture: true,
-                passive: true,
-            });
-            document.addEventListener("touchstart", unlockAudioGlobal, {
-                capture: true,
-                passive: true,
-            });
-            document.addEventListener("keydown", unlockAudioGlobal, {
-                capture: true,
-                passive: true,
-            });
+    if (ctx.state === 'suspended') {
+        ctx.resume();
+    }
+
+    // Safari Hack: проигрываем абсолютную тишину, чтобы "пробить" блокировку
+    try {
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        if (source.start) {
+            source.start(0);
+        } else {
+            source.noteOn(0); // Для очень старых версий webkit
+        }
+    } catch (e) {
+        console.log('Silent audio hack failed', e);
+    }
+
+    // Если статус движка поменялся на running, звук разблокирован
+    setTimeout(() => {
+        if (ctx.state === 'running') {
+            isAudioUnlocked = true;
+            document.removeEventListener('click', unlockAudioGlobal, true);
+            document.removeEventListener('touchstart', unlockAudioGlobal, true);
+            document.removeEventListener('keydown', unlockAudioGlobal, true);
+            document.removeEventListener('mousedown', unlockAudioGlobal, true);
+        }
+    }, 50);
+}
+
+// Перехватываем ВСЕ возможные события. mousedown критически важен для десктопного Safari!
+document.addEventListener('click', unlockAudioGlobal, { capture: true, passive: true });
+document.addEventListener('touchstart', unlockAudioGlobal, { capture: true, passive: true });
+document.addEventListener('keydown', unlockAudioGlobal, { capture: true, passive: true });
+document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passive: true });
 
             // === STARS BACKGROUND ===
             const starsCanvas = document.getElementById("stars-canvas");

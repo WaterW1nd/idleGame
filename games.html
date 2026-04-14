@@ -119,6 +119,14 @@
             .mode-card.meteor-card {
                 border-color: rgba(255, 120, 50, 0.3);
             }
+
+            .mode-card.helix-card {
+                border-color: rgba(200, 100, 255, 0.3);
+            }
+            .mode-card.helix-card:hover {
+                border-color: rgba(200, 100, 255, 0.7);
+                box-shadow: 0 0 40px rgba(200, 100, 255, 0.2);
+            }
             .mode-card.meteor-card:hover {
                 border-color: rgba(255, 120, 50, 0.7);
                 box-shadow: 0 0 40px rgba(255, 120, 50, 0.2);
@@ -428,6 +436,18 @@
                             Активный режим! Сбивай метеориты лазером!
                         </div>
                     </div>
+
+                    <div
+                        class="mode-card helix-card"
+                        onclick="startMode('helix')"
+                    >
+                        <span class="mode-icon">🌀</span>
+                        <div class="mode-name">Магическая спираль</div>
+                        <div class="mode-desc">
+                            Аналог Зума! Стреляй цветными шариками и не дай им
+                            дойти до лунки!
+                        </div>
+                    </div>
                 </div>
                 <div class="music-picker">
                     <div class="music-picker-label">🎵 Своя музыка фоном</div>
@@ -479,6 +499,26 @@
             <canvas id="bubble-canvas"></canvas>
         </div>
 
+        <div id="helix-screen" class="screen">
+            <button class="back-btn" onclick="goMenu()">
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                >
+                    <path d="M19 12H5M12 5l-7 7 7 7"></path>
+                </svg>
+                В МЕНЮ
+            </button>
+            <div class="hud">
+                <div class="hud-label">СЧЕТ</div>
+                <div class="hud-score" id="helix-score" style="color: #c4b5fd">
+                    🌀 0
+                </div>
+            </div>
+            <canvas id="helix-canvas"></canvas>
+        </div>
         <div id="meteor-screen" class="screen">
             <button class="back-btn" onclick="goMenu()">
                 <svg
@@ -562,6 +602,7 @@
                     animId = null;
                 }
                 stopBubbleMode();
+                if (typeof stophelixMode === "function") stophelixMode();
                 stopMeteorMode();
                 stopBgMusic();
                 currentMode = null;
@@ -586,6 +627,9 @@
                 if (mode === "bubble") {
                     showScreen("bubble-screen");
                     initBubbleMode();
+                } else if (mode === "helix") {
+                    showScreen("helix-screen");
+                    inithelixMode();
                 } else {
                     showScreen("meteor-screen");
                     initMeteorMode();
@@ -598,6 +642,8 @@
                     resizeCanvas(document.getElementById("bubble-canvas"));
                 if (currentMode === "meteor")
                     resizeCanvas(document.getElementById("meteor-canvas"));
+                if (currentMode === "helix")
+                    resizeCanvas(document.getElementById("helix-canvas"));
             });
 
             // === MP3 MUSIC ===
@@ -2517,6 +2563,707 @@
                     o.start();
                     o.stop(ctx.currentTime + 0.8);
                 } catch (e) {}
+            }
+
+            // =====================================================================
+            // ===========================  HELIX MODE  ============================
+            // =====================================================================
+            const ZC = document.getElementById("helix-canvas");
+            let zCtx = null;
+            if (ZC) zCtx = ZC.getContext("2d");
+
+            let zAnimId = null;
+            let zPath = [];
+            let zPathLen = 0;
+            let zBalls = [];
+            let zProjectiles = [];
+            let zParticles = [];
+            let zShooter = { angle: 0, color: 0, nextColor: 0 };
+            let zScore = 0;
+            let zGameOver = false;
+            let zSpawnDist = 0;
+            let zHole = { x: 0, y: 0 };
+            let zBgStars = [];
+
+            const Z_COLORS = [
+                "#ff4d8d",
+                "#47b8ff",
+                "#52ffb1",
+                "#ffbe3d",
+                "#c777ff",
+            ];
+            const Z_R = W() < 600 ? 14 : 18;
+            const Z_SPEED = W() < 600 ? 1.0 : 1.25;
+            const Z_CHAIN_SPACING = Z_R * 2 + 1;
+            const Z_AIM_STEP = Z_R * 1.15;
+
+            function inithelixBg() {
+                zPath = [];
+                const cx = W() / 2;
+                // Сдвигаем центр спирали чуть вниз, чтобы не наезжала на верхнее меню
+                const cy = H() / 2 + (H() > 600 ? 30 : 20);
+                const pCount = 1500;
+
+                const loops = 2.5 + Math.random() * 2.0;
+                // Чуть уменьшаем максимальный радиус, чтобы освободить верх
+                const maxRadius = Math.min(W(), H()) * 0.4;
+                const startAngle = Math.random() * Math.PI * 2;
+                const spiralDir = Math.random() > 0.5 ? 1 : -1;
+                const wobbleFreq = 1 + Math.random() * 2;
+                const wobbleAmp = 0.04 + Math.random() * 0.08;
+
+                let totalLen = 0;
+                let prev = null;
+
+                for (let i = 0; i <= pCount; i++) {
+                    const t = i / pCount;
+                    const k = 1 - t; // Идет от 1 (внешний край) до 0 (центр)
+
+                    const angle =
+                        startAngle + spiralDir * k * Math.PI * 2 * loops;
+                    const wobble =
+                        1 +
+                        Math.sin(k * Math.PI * 2 * wobbleFreq + startAngle) *
+                            wobbleAmp;
+
+                    // В самом конце k=0, поэтому radius будет строго 0
+                    const radius = k * maxRadius * wobble;
+
+                    const x = cx + Math.cos(angle) * radius;
+                    const y = cy + Math.sin(angle) * radius;
+
+                    if (prev) {
+                        totalLen += Math.hypot(x - prev.x, y - prev.y);
+                    }
+
+                    zPath.push({ x, y, dist: totalLen });
+                    prev = { x, y };
+                }
+
+                zPathLen = totalLen;
+                zHole = { x: cx, y: cy };
+            }
+
+            function gethelixPoint(d) {
+                if (d <= 0) return zPath[0];
+                if (d >= zPathLen) return zPath[zPath.length - 1];
+
+                let left = 0;
+                let right = zPath.length - 1;
+
+                while (left <= right) {
+                    const mid = (left + right) >> 1;
+                    if (zPath[mid].dist < d) left = mid + 1;
+                    else if (zPath[mid].dist > d) right = mid - 1;
+                    else return zPath[mid];
+                }
+
+                const i1 = Math.max(0, right);
+                const i2 = Math.min(zPath.length - 1, i1 + 1);
+                if (i1 === i2) return zPath[i1];
+
+                const p1 = zPath[i1];
+                const p2 = zPath[i2];
+                const seg = p2.dist - p1.dist;
+                if (seg <= 0) return p1;
+
+                const t = (d - p1.dist) / seg;
+                return {
+                    x: p1.x + (p2.x - p1.x) * t,
+                    y: p1.y + (p2.y - p1.y) * t,
+                    dist: d,
+                };
+            }
+
+            function inithelixMode() {
+                resizeCanvas(ZC);
+                inithelixBg();
+
+                zBalls = [];
+                zProjectiles = [];
+                zParticles = [];
+                zScore = 0;
+                zGameOver = false;
+                window.zGameWon = false;
+                zSpawnDist = 0;
+
+                // Считаем строго целое число (обернули формулу в Math.floor)
+                window.zBallsToSpawn = Math.floor((zPathLen / (Z_R * 2)) * 1.8);
+
+                zShooter.color = Math.floor(Math.random() * Z_COLORS.length);
+                zShooter.nextColor = Math.floor(
+                    Math.random() * Z_COLORS.length,
+                );
+
+                document.getElementById("helix-score").textContent = "🌀 0";
+
+                for (let i = 0; i < 10; i++) {
+                    zBalls.push({
+                        d: 10 * (Z_R * 2) - i * (Z_R * 2),
+                        color: Math.floor(Math.random() * Z_COLORS.length),
+                    });
+                }
+                window.zBallsToSpawn -= 10;
+
+                ZC.addEventListener("mousemove", zMouseMove);
+                ZC.addEventListener("touchmove", zTouchMove, {
+                    passive: false,
+                });
+                ZC.addEventListener("mousedown", zMouseDown);
+                ZC.addEventListener("touchstart", zTouchStart, {
+                    passive: false,
+                });
+
+                if (zAnimId) cancelAnimationFrame(zAnimId);
+                helixLoop();
+            }
+
+            function stophelixMode() {
+                if (zAnimId) cancelAnimationFrame(zAnimId);
+                zAnimId = null;
+
+                ZC.removeEventListener("mousemove", zMouseMove);
+                ZC.removeEventListener("touchmove", zTouchMove);
+                ZC.removeEventListener("mousedown", zMouseDown);
+                ZC.removeEventListener("touchstart", zTouchStart);
+            }
+
+            function updatehelixAngle(clientX, clientY) {
+                const rect = ZC.getBoundingClientRect();
+                const mx = clientX - rect.left;
+                const my = clientY - rect.top;
+                zShooter.angle = Math.atan2(my - H() / 2, mx - W() / 2);
+            }
+
+            function zMouseMove(e) {
+                updatehelixAngle(e.clientX, e.clientY);
+            }
+
+            function zTouchMove(e) {
+                if (e.cancelable) e.preventDefault();
+                updatehelixAngle(e.touches[0].clientX, e.touches[0].clientY);
+            }
+
+            function zMouseDown(e) {
+                if (e.button !== 0) return;
+                const rect = ZC.getBoundingClientRect();
+
+                if (zGameOver) {
+                    const my = e.clientY - rect.top;
+                    if (my > H() / 2 && my < H() / 2 + 100) inithelixMode();
+                    return;
+                }
+
+                firehelix();
+            }
+
+            function zTouchStart(e) {
+                if (e.cancelable) e.preventDefault();
+                const t = e.touches[0];
+                updatehelixAngle(t.clientX, t.clientY);
+
+                if (zGameOver) {
+                    const rect = ZC.getBoundingClientRect();
+                    const my = t.clientY - rect.top;
+                    if (my > H() / 2 && my < H() / 2 + 100) inithelixMode();
+                    return;
+                }
+
+                firehelix();
+            }
+
+            function firehelix() {
+                zProjectiles.push({
+                    x: W() / 2,
+                    y: H() / 2,
+                    vx: Math.cos(zShooter.angle) * 18,
+                    vy: Math.sin(zShooter.angle) * 18,
+                    color: zShooter.color,
+                });
+
+                zShooter.color = zShooter.nextColor;
+                zShooter.nextColor = Math.floor(
+                    Math.random() * Z_COLORS.length,
+                );
+
+                if (typeof playLaserSound === "function") playLaserSound();
+            }
+
+            function checkhelixMatches(index) {
+                if (index < 0 || index >= zBalls.length) return;
+
+                const c = zBalls[index].color;
+                let left = index;
+                let right = index;
+
+                while (left > 0 && zBalls[left - 1].color === c) left--;
+                while (
+                    right < zBalls.length - 1 &&
+                    zBalls[right + 1].color === c
+                )
+                    right++;
+
+                const count = right - left + 1;
+                if (count >= 3) {
+                    for (let i = left; i <= right; i++) {
+                        const pt = gethelixPoint(zBalls[i].d);
+                        for (let k = 0; k < 12; k++) {
+                            zParticles.push({
+                                x: pt.x,
+                                y: pt.y,
+                                vx: (Math.random() - 0.5) * 8,
+                                vy: (Math.random() - 0.5) * 8,
+                                color: Z_COLORS[c],
+                                life: 1,
+                            });
+                        }
+                    }
+
+                    zBalls.splice(left, count);
+                    zScore += count * 10;
+                    document.getElementById("helix-score").textContent =
+                        "🌀 " + zScore;
+
+                    if (typeof playExplosion === "function") playExplosion();
+                }
+            }
+
+            function drawhelixBall(ctx, x, y, colorIdx, isOpaque = false) {
+                const color = Z_COLORS[colorIdx];
+                const r = Z_R;
+
+                ctx.save();
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 12;
+
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                const grad = ctx.createRadialGradient(
+                    x - r * 0.3,
+                    y - r * 0.3,
+                    r * 0.15,
+                    x,
+                    y,
+                    r,
+                );
+
+                if (isOpaque) {
+                    // Плотный, насыщенный цвет для пушки и снарядов
+                    grad.addColorStop(0, "rgba(255,255,255,0.7)");
+                    grad.addColorStop(0.45, color);
+                    grad.addColorStop(1, color);
+                } else {
+                    // Полупрозрачный "желейный" эффект для змейки на фоне
+                    grad.addColorStop(0, "rgba(255,255,255,0.15)");
+                    grad.addColorStop(0.45, color + "99");
+                    grad.addColorStop(1, color + "33");
+                }
+
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 1.4;
+                ctx.strokeStyle = isOpaque
+                    ? "rgba(255,255,255,0.6)"
+                    : "rgba(255,255,255,0.35)";
+                ctx.stroke();
+
+                const h1 = ctx.createRadialGradient(
+                    x - r * 0.35,
+                    y - r * 0.35,
+                    0,
+                    x - r * 0.35,
+                    y - r * 0.35,
+                    r * 0.42,
+                );
+                h1.addColorStop(
+                    0,
+                    isOpaque
+                        ? "rgba(255,255,255,0.95)"
+                        : "rgba(255,255,255,0.85)",
+                );
+                h1.addColorStop(1, "rgba(255,255,255,0)");
+                ctx.beginPath();
+                ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.42, 0, Math.PI * 2);
+                ctx.fillStyle = h1;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(x + r * 0.28, y + r * 0.24, r * 0.14, 0, Math.PI * 2);
+                ctx.fillStyle = isOpaque
+                    ? "rgba(255,255,255,0.5)"
+                    : "rgba(255,255,255,0.2)";
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            function drawhelixHole(ctx, x, y, r) {
+                const t = Date.now() * 0.0025;
+                ctx.save();
+                ctx.translate(x, y);
+
+                const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.2);
+                glow.addColorStop(0, "rgba(255,40,110,0.65)");
+                glow.addColorStop(0.45, "rgba(120,0,80,0.45)");
+                glow.addColorStop(1, "rgba(0,0,0,0)");
+                ctx.beginPath();
+                ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
+                ctx.fillStyle = glow;
+                ctx.fill();
+
+                ctx.rotate(t);
+                ctx.strokeStyle = "rgba(255,120,180,0.55)";
+                ctx.lineWidth = 2.5;
+                for (let i = 0; i < 6; i++) {
+                    const a = (i / 6) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(
+                        Math.cos(a + Math.PI / 4) * r * 0.8,
+                        Math.sin(a + Math.PI / 4) * r * 0.8,
+                        Math.cos(a) * r * 1.45,
+                        Math.sin(a) * r * 1.45,
+                    );
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+                ctx.fillStyle = "#05030a";
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            function drawhelixAimDots(ctx) {
+                const sx = W() / 2;
+                const sy = H() / 2;
+
+                for (let i = 1; i <= 18; i++) {
+                    const d = i * Z_AIM_STEP;
+                    const x = sx + Math.cos(zShooter.angle) * d;
+                    const y = sy + Math.sin(zShooter.angle) * d;
+
+                    if (x < 0 || x > W() || y < 0 || y > H()) break;
+
+                    const a = 0.22 + (1 - i / 18) * 0.26;
+                    const r = 1.8 + (1 - i / 18) * 1.2;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(220,220,230,${a})`;
+                    ctx.fill();
+                }
+            }
+
+            function getSpawnColor() {
+                let color = Math.floor(Math.random() * Z_COLORS.length);
+
+                // Чаще формируем пары, но не длинные одноцветные хвосты
+                if (zBalls.length >= 1) {
+                    const c1 = zBalls[0].color;
+                    const c2 = zBalls.length >= 2 ? zBalls[1].color : -1;
+
+                    if (c1 !== c2) {
+                        if (Math.random() < 0.72) color = c1;
+                    } else {
+                        if (Math.random() < 0.82) {
+                            const others = [0, 1, 2, 3, 4].filter(
+                                (v) => v !== c1,
+                            );
+                            color =
+                                others[
+                                    Math.floor(Math.random() * others.length)
+                                ];
+                        }
+                    }
+                }
+
+                return color;
+            }
+
+            function helixLoop() {
+                resizeCanvas(ZC);
+                const ctx = zCtx;
+                const cx = zHole.x,
+                    cy = zHole.y;
+
+                ctx.clearRect(0, 0, W(), H());
+
+                // 1. ФОН
+                const time = Date.now() * 0.0005;
+                const bgGrad = ctx.createRadialGradient(
+                    W() / 2,
+                    H() / 2,
+                    0,
+                    W() / 2,
+                    H() / 2,
+                    Math.max(W(), H()),
+                );
+                bgGrad.addColorStop(0, "#1a0b2e");
+                bgGrad.addColorStop(0.6, "#0a0a1a");
+                bgGrad.addColorStop(1, "#000000");
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, W(), H());
+
+                ctx.save();
+                ctx.globalCompositeOperation = "lighter";
+                ctx.globalAlpha = 0.5;
+                const nebGrad1 = ctx.createRadialGradient(
+                    W() / 2 + Math.sin(time) * 150,
+                    H() / 2 + Math.cos(time * 0.8) * 150,
+                    0,
+                    W() / 2 + Math.sin(time) * 150,
+                    H() / 2 + Math.cos(time * 0.8) * 150,
+                    W() * 0.6,
+                );
+                nebGrad1.addColorStop(0, "rgba(100, 50, 255, 0.3)");
+                nebGrad1.addColorStop(1, "rgba(0, 0, 0, 0)");
+                ctx.fillStyle = nebGrad1;
+                ctx.fillRect(0, 0, W(), H());
+
+                const nebGrad2 = ctx.createRadialGradient(
+                    W() / 2 + Math.cos(time * 1.1) * 200,
+                    H() / 2 + Math.sin(time * 0.9) * 200,
+                    0,
+                    W() / 2 + Math.cos(time * 1.1) * 200,
+                    H() / 2 + Math.sin(time * 0.9) * 200,
+                    W() * 0.6,
+                );
+                nebGrad2.addColorStop(0, "rgba(0, 150, 255, 0.2)");
+                nebGrad2.addColorStop(1, "rgba(0, 0, 0, 0)");
+                ctx.fillStyle = nebGrad2;
+                ctx.fillRect(0, 0, W(), H());
+                ctx.restore();
+
+                // 2. СПИРАЛЬ
+                ctx.beginPath();
+                ctx.moveTo(zPath[0].x, zPath[0].y);
+                for (let i = 1; i < zPath.length - 1; i++) {
+                    const xc = (zPath[i].x + zPath[i + 1].x) / 2;
+                    const yc = (zPath[i].y + zPath[i + 1].y) / 2;
+                    ctx.quadraticCurveTo(zPath[i].x, zPath[i].y, xc, yc);
+                }
+                ctx.lineTo(
+                    zPath[zPath.length - 1].x,
+                    zPath[zPath.length - 1].y,
+                );
+
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+                ctx.lineWidth = Z_R * 2 + 8;
+                ctx.stroke();
+
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+                ctx.lineWidth = Z_R * 2 - 2;
+                ctx.stroke();
+
+                drawhelixHole(ctx, zHole.x, zHole.y, Z_R);
+
+                // 3. ФИЗИКА И ШАРИКИ
+                if (!zGameOver && !window.zGameWon) {
+                    if (window.zBallsToSpawn > 0) {
+                        zSpawnDist += Z_SPEED;
+                        if (zSpawnDist >= Z_R * 2) {
+                            let newColor = Math.floor(
+                                Math.random() * Z_COLORS.length,
+                            );
+                            if (zBalls.length >= 1) {
+                                let prev1 = zBalls[0].color;
+                                let prev2 =
+                                    zBalls.length >= 2 ? zBalls[1].color : -1;
+                                if (prev1 !== prev2 && Math.random() < 0.8)
+                                    newColor = prev1;
+                                else if (
+                                    prev1 === prev2 &&
+                                    Math.random() < 0.85
+                                ) {
+                                    const others = [0, 1, 2, 3, 4].filter(
+                                        (c) => c !== prev1,
+                                    );
+                                    newColor =
+                                        others[
+                                            Math.floor(
+                                                Math.random() * others.length,
+                                            )
+                                        ];
+                                }
+                            }
+
+                            let startD =
+                                zBalls.length > 0 ? zBalls[0].d - Z_R * 2 : 0;
+                            zBalls.unshift({ d: startD, color: newColor });
+
+                            zSpawnDist -= Z_R * 2;
+                            window.zBallsToSpawn--;
+                        }
+                    }
+
+                    if (zBalls.length > 0) {
+                        zBalls[0].d += Z_SPEED;
+                        for (let i = 1; i < zBalls.length; i++) {
+                            const gap = zBalls[i].d - zBalls[i - 1].d;
+                            if (gap < Z_R * 2) {
+                                zBalls[i].d = zBalls[i - 1].d + Z_R * 2;
+                            } else {
+                                zBalls[i].d += Z_SPEED * 0.4;
+                                if (
+                                    gap < Z_R * 6 &&
+                                    zBalls[i].color === zBalls[i - 1].color
+                                ) {
+                                    zBalls[i - 1].d += Z_SPEED * 2.5;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (
+                    window.zBallsToSpawn <= 0 &&
+                    zBalls.length === 0 &&
+                    !zGameOver
+                ) {
+                    window.zGameWon = true;
+                }
+
+                for (let i = 0; i < zBalls.length; i++) {
+                    let pt = gethelixPoint(zBalls[i].d);
+                    // Рисуем полупрозрачные (false)
+                    drawhelixBall(ctx, pt.x, pt.y, zBalls[i].color, false);
+                    if (zBalls[i].d >= zPathLen - Z_R) zGameOver = true;
+                }
+
+                for (let i = zProjectiles.length - 1; i >= 0; i--) {
+                    let p = zProjectiles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    // Летящий снаряд - НЕпрозрачный (true)
+                    drawhelixBall(ctx, p.x, p.y, p.color, true);
+
+                    let hit = false;
+                    for (let j = 0; j < zBalls.length; j++) {
+                        let pt = gethelixPoint(zBalls[j].d);
+                        if (Math.hypot(p.x - pt.x, p.y - pt.y) < Z_R * 1.8) {
+                            zBalls.splice(j, 0, {
+                                d: zBalls[j].d + Z_R * 2,
+                                color: p.color,
+                            });
+                            checkhelixMatches(j);
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (hit || p.x < 0 || p.x > W() || p.y < 0 || p.y > H()) {
+                        zProjectiles.splice(i, 1);
+                    }
+                }
+
+                for (let i = zParticles.length - 1; i >= 0; i--) {
+                    let p = zParticles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.03;
+                    if (p.life <= 0) {
+                        zParticles.splice(i, 1);
+                        continue;
+                    }
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+
+                // 4. ТРАЕКТОРИЯ
+                ctx.save();
+                ctx.globalAlpha = 0.6;
+                for (let i = 2; i <= 20; i++) {
+                    const d = i * (Z_R * 1.5);
+                    const dotX = W() / 2 + Math.cos(zShooter.angle) * d;
+                    const dotY = H() / 2 + Math.sin(zShooter.angle) * d;
+                    if (dotX < 0 || dotX > W() || dotY < 0 || dotY > H()) break;
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = "#cccccc";
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // 5. ПУШКА
+                ctx.save();
+                ctx.translate(W() / 2, H() / 2);
+                ctx.rotate(zShooter.angle);
+                ctx.fillStyle = "#444";
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(-10, -10, 40, 20, 10);
+                else ctx.rect(-10, -10, 40, 20);
+                ctx.fill();
+                // Снаряд в пушке - НЕпрозрачный (true)
+                drawhelixBall(ctx, 0, 0, zShooter.color, true);
+                ctx.restore();
+
+                // 6. ИНТЕРФЕЙС И СЧЕТЧИК
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("СЛЕД", W() / 2, 30);
+
+                // Подсказка следующего шара - НЕпрозрачный (true)
+                drawhelixBall(ctx, W() / 2, 55, zShooter.nextColor, true);
+
+                // Считаем общее число (все живые шары на поле + те, что еще выедут)
+                // Оно будет уменьшаться только при реальном расстреле
+                const totalRemaining = Math.max(
+                    0,
+                    window.zBallsToSpawn + zBalls.length,
+                );
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                ctx.font = "bold 12px sans-serif";
+                ctx.fillText("ОСТАЛОСЬ: " + totalRemaining, W() / 2, 88);
+
+                // 7. ЭКРАН ПОБЕДЫ / ПОРАЖЕНИЯ
+                if (zGameOver || window.zGameWon) {
+                    ctx.fillStyle = "rgba(0,0,0,0.85)";
+                    ctx.fillRect(0, 0, W(), H());
+
+                    ctx.fillStyle = window.zGameWon ? "#44ff88" : "#ff3366";
+                    ctx.font = "bold 38px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(
+                        window.zGameWon ? "УРОВЕНЬ ПРОЙДЕН!" : "ИГРА ОКОНЧЕНА",
+                        W() / 2,
+                        H() / 2 - 50,
+                    );
+
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "24px sans-serif";
+                    ctx.fillText("Очки: " + zScore, W() / 2, H() / 2);
+
+                    ctx.fillStyle = "rgba(255,255,255,0.1)";
+                    ctx.beginPath();
+                    if (ctx.roundRect)
+                        ctx.roundRect(W() / 2 - 120, H() / 2 + 30, 240, 60, 15);
+                    else ctx.rect(W() / 2 - 120, H() / 2 + 30, 240, 60);
+                    ctx.fill();
+                    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "bold 22px sans-serif";
+                    ctx.fillText(
+                        window.zGameWon ? "ИГРАТЬ СНОВА" : "ЗАНОВО",
+                        W() / 2,
+                        H() / 2 + 68,
+                    );
+                }
+
+                zAnimId = requestAnimationFrame(helixLoop);
             }
         </script>
     </body>

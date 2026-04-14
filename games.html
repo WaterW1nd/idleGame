@@ -893,7 +893,7 @@
                 const r = 28 + Math.random() * 38;
                 bubbles.push({
                     x: r + Math.random() * (W() - 2 * r),
-                    y: H() + r,
+                    y: H() - 20, // <--- ИЗМЕНЕНО ЗДЕСЬ (пузырь плавно вылетает из-за панели)
                     r,
                     hue: Math.random() * 360,
                     vy: -0.82 - Math.random() * 1.08,
@@ -1174,6 +1174,82 @@
                 ctx.restore();
             }
 
+            // === НОВАЯ ФУНКЦИЯ: Генератор пузырей (чтобы закрыть мертвую зону iOS) ===
+            function drawBubbleGenerator(ctx, w, h) {
+                const baseH = 110; // Высота нашей неигровой "панели" внизу (закрывает зону iOS)
+                ctx.save();
+
+                // Рисуем корпус (яркий градиент)
+                const grad = ctx.createLinearGradient(0, h - baseH, 0, h);
+                grad.addColorStop(0, "#4facfe"); // Голубой сверху
+                grad.addColorStop(0.5, "#1a1a4e"); // Плавный уход в темно-синий
+                grad.addColorStop(1, "#0a0a1a"); // Точный цвет фона игры (#0a0a1a) в самом низу
+                ctx.fillStyle = grad;
+
+                ctx.beginPath();
+                // Рисуем волнистый край, чтобы это выглядело как прикольный механизм
+                ctx.moveTo(0, h - baseH + 20);
+                ctx.quadraticCurveTo(
+                    w * 0.25,
+                    h - baseH - 20,
+                    w * 0.5,
+                    h - baseH + 15,
+                );
+                ctx.quadraticCurveTo(
+                    w * 0.75,
+                    h - baseH + 40,
+                    w,
+                    h - baseH + 10,
+                );
+                ctx.lineTo(w, h);
+                ctx.lineTo(0, h);
+                ctx.fill();
+
+                // Светлый кант по волнистому краю для объема
+                ctx.beginPath();
+                ctx.moveTo(0, h - baseH + 20);
+                ctx.quadraticCurveTo(
+                    w * 0.25,
+                    h - baseH - 20,
+                    w * 0.5,
+                    h - baseH + 15,
+                );
+                ctx.quadraticCurveTo(
+                    w * 0.75,
+                    h - baseH + 40,
+                    w,  
+                    h - baseH + 10,
+                );
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; // Чуть мягче свечение
+                ctx.lineWidth = 2; // <--- Сделали линию тонкой (было 6)
+                ctx.stroke();
+
+                // Декоративные "сопла", откуда как бы летят пузыри
+                const holes = [0.15, 0.5, 0.85];
+                holes.forEach((px, i) => {
+                    const cx = w * px;
+                    const cy = h - baseH + (i === 1 ? 30 : 40); // Центральное сопло чуть выше
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy, 35, 12, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+                    ctx.fill();
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                });
+
+                // Прикольная надпись в самом низу
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#fff";
+                ctx.font = '900 16px "Segoe UI", Arial, sans-serif';
+                ctx.shadowColor = "rgba(0,0,0,0.2)";
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetY = 2;
+                ctx.fillText("🫧 ГЕНЕРАТОР ПУЗЫРЕЙ 🫧", w / 2, h - 20);
+
+                ctx.restore();
+            }
+
             function bubbleLoop() {
                 resizeCanvas(BC);
                 const ctx = bCtx;
@@ -1258,6 +1334,7 @@
                     }
                     drawBubble(ctx, b.x, b.y, b.r, b.hue, 1);
                 }
+                drawBubbleGenerator(ctx, W(), H());
                 bubbleAnimId = requestAnimationFrame(bubbleLoop);
             }
 

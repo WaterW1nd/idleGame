@@ -6,7 +6,18 @@
 <title>Игра для малыша</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;background:#0a0a1a;color:#fff;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+html, body {
+  width: 100%; 
+  height: 100dvh; /* <--- FIX: динамическая высота для iOS */
+  overflow: hidden;
+  overscroll-behavior: none; /* <--- FIX: убиваем свайп обновления */
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #0a0a1a; 
+  color: #fff;
+  user-select: none; 
+  -webkit-user-select: none;
+  touch-action: none; /* <--- FIX: убиваем браузерные жесты */
+}
 
 /* ===== SCREENS ===== */
 .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;transition:opacity 0.4s;pointer-events:none;opacity:0;}
@@ -173,6 +184,10 @@ let currentMode = null;
 let animId = null;
 
 const W = () => window.innerWidth;
+// === FIX: Жесткая блокировка скролла и свайпов на iOS ===
+document.addEventListener('touchmove', function(e) {
+  if (e.cancelable) e.preventDefault();
+}, { passive: false });
 const H = () => window.innerHeight;
 
 // === NEW: CENTRALIZED RESIZE ===
@@ -408,7 +423,7 @@ function initBubbleMode() {
   bubbleSpawnTimer = setInterval(spawnBubble, 720);
   document.addEventListener('keydown', bubbleKeyHandler);
   BC.addEventListener('click', bubbleClickHandler);
-  BC.addEventListener('touchstart', bubbleTouchHandler, {passive:true});
+  BC.addEventListener('touchstart', bubbleTouchHandler, {passive:false});
   BC.addEventListener('mousemove', bubbleTrailHandler);
   bubbleLoop();
 }
@@ -511,17 +526,26 @@ function bubbleClickHandler(e) {
 function bubbleTouchHandler(e) {
   const rect = BC.getBoundingClientRect();
   const scaleX = BC.width / rect.width, scaleY = BC.height / rect.height;
-  const t = e.touches[0];
-  const cx = (t.clientX - rect.left) * scaleX, cy = (t.clientY - rect.top) * scaleY;
-  let hit = false;
-  for(let i = bubbles.length-1; i>=0; i--) {
-    const b = bubbles[i];
-    if (!b.popping && Math.hypot(cx-b.x, cy-b.y) < b.r*1.4) {
-      popBubble(b);
-      hit = true; break;
+  
+  // Проходим по ВСЕМ пальцам, которые коснулись экрана в этот момент
+  for (let j = 0; j < e.changedTouches.length; j++) {
+    const t = e.changedTouches[j];
+    const cx = (t.clientX - rect.left) * scaleX;
+    const cy = (t.clientY - rect.top) * scaleY;
+    
+    let hit = false;
+    for(let i = bubbles.length-1; i >= 0; i--) {
+      const b = bubbles[i];
+      // Зона попадания увеличена (b.r * 1.8) для удобства
+      if (!b.popping && Math.hypot(cx-b.x, cy-b.y) < b.r * 1.8) {
+        popBubble(b);
+        hit = true;
+        // Без break; мы лопаем все слипшиеся пузыри под одним пальцем
+      }
     }
+    
+    if (!hit) spawnClickEffect(cx, cy);
   }
-  if (!hit) spawnClickEffect(cx, cy);
 }
 
 function bubbleTrailHandler(e) {

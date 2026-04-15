@@ -2714,48 +2714,56 @@
                 };
             }
 
-            function findNearestHelixDist(x, y) {
-                let bestDist = 0;
-                let bestSq = Infinity;
-
-                for (let i = 0; i < zPath.length; i++) {
-                    const dx = x - zPath[i].x;
-                    const dy = y - zPath[i].y;
-                    const sq = dx * dx + dy * dy;
-                    if (sq < bestSq) {
-                        bestSq = sq;
-                        bestDist = zPath[i].dist;
-                    }
-                }
-
-                return bestDist;
-            }
-
             function insertHelixProjectile(p) {
                 if (zBalls.length === 0) return false;
 
-                let collided = false;
+                let hitIndex = -1;
+                let minDist = Infinity;
+
+                // 1. Ищем не просто любую точку спирали, а КОНКРЕТНЫЙ ШАРИК, в который мы попали
                 for (let j = 0; j < zBalls.length; j++) {
                     const pt = gethelixPoint(zBalls[j].d);
-                    if (Math.hypot(p.x - pt.x, p.y - pt.y) < Z_HIT_RADIUS()) {
-                        collided = true;
-                        break;
+                    const dist = Math.hypot(p.x - pt.x, p.y - pt.y);
+
+                    if (dist < Z_HIT_RADIUS() && dist < minDist) {
+                        minDist = dist;
+                        hitIndex = j;
                     }
                 }
-                if (!collided) return false;
 
-                const hitD = findNearestHelixDist(p.x, p.y);
+                if (hitIndex === -1) return false; // Ни в кого не попали
 
-                let insertIndex = zBalls.findIndex((b) => b.d > hitD);
-                if (insertIndex === -1) insertIndex = zBalls.length;
+                // 2. Смотрим, куда попал снаряд: в переднюю часть шарика или в заднюю?
+                const hitBall = zBalls[hitIndex];
+                const ptAhead = gethelixPoint(hitBall.d + Z_R());
+                const ptBehind = gethelixPoint(hitBall.d - Z_R());
 
-                // Вставляем шарик на точное место попадания
+                const distAhead = Math.hypot(p.x - ptAhead.x, p.y - ptAhead.y);
+                const distBehind = Math.hypot(
+                    p.x - ptBehind.x,
+                    p.y - ptBehind.y,
+                );
+
+                let insertIndex = hitIndex;
+                let insertD = hitBall.d;
+
+                if (distAhead < distBehind) {
+                    // Попали ближе к переду (в сторону лунки)
+                    insertIndex = hitIndex + 1;
+                    insertD = hitBall.d + Z_CHAIN_SPACING() * 0.5; // Чуть впереди
+                } else {
+                    // Попали ближе к заду (в сторону пушки)
+                    insertIndex = hitIndex;
+                    insertD = hitBall.d - Z_CHAIN_SPACING() * 0.5; // Чуть сзади
+                }
+
+                // 3. Вставляем новый шар строго рядом с тем, в который попали
                 zBalls.splice(insertIndex, 0, {
-                    d: hitD,
+                    d: insertD,
                     color: p.color,
                 });
 
-                // Проверяем взрыв. Мгновенное выравнивание убрано — цепочка раздвинется сама.
+                // 4. Запускаем проверку взрыва
                 checkhelixMatches(insertIndex);
 
                 return true;

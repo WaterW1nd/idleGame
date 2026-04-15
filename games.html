@@ -2966,14 +2966,25 @@
                 }
             }
 
-            function drawhelixBall(ctx, x, y, colorIdx, isOpaque = false) {
+            function drawhelixBall(
+                ctx,
+                x,
+                y,
+                colorIdx,
+                isOpaque = false,
+                glowAmount = 12,
+            ) {
                 const color = Z_COLORS[colorIdx];
                 const r = Z_R();
 
                 ctx.save();
                 ctx.globalAlpha = isOpaque ? 1 : 0.82;
-                ctx.shadowColor = color;
-                ctx.shadowBlur = 12;
+
+                // Применяем свечение только если оно больше 0
+                if (glowAmount > 0) {
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = glowAmount;
+                }
 
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -3194,7 +3205,7 @@
 
                 for (let i = 0; i < zBalls.length; i++) {
                     const pt = gethelixPoint(zBalls[i].d);
-                    drawhelixBall(ctx, pt.x, pt.y, zBalls[i].color, false);
+                    drawhelixBall(ctx, pt.x, pt.y, zBalls[i].color, false, 0);
 
                     if (zBalls[i].d >= zPathLen - Z_R()) {
                         zGameOver = true;
@@ -3206,7 +3217,7 @@
                     p.x += p.vx;
                     p.y += p.vy;
 
-                    drawhelixBall(ctx, p.x, p.y, p.color, true);
+                    drawhelixBall(ctx, p.x, p.y, p.color, true, 24);
 
                     const hit =
                         insertHelixProjectile(p) ||
@@ -3251,7 +3262,7 @@
                 else ctx.rect(-10, -10, 40, 20);
                 ctx.fill();
 
-                drawhelixBall(ctx, 0, 0, zShooter.color, true);
+                drawhelixBall(ctx, 0, 0, zShooter.color, true, 24);
                 ctx.restore();
 
                 ctx.fillStyle = "#fff";
@@ -3259,7 +3270,7 @@
                 ctx.textAlign = "center";
                 ctx.fillText("СЛЕД", W() / 2, 30);
 
-                drawhelixBall(ctx, W() / 2, 55, zShooter.nextColor, true);
+                drawhelixBall(ctx, W() / 2, 55, zShooter.nextColor, true, 12);
 
                 const totalRemaining = Math.max(
                     0,

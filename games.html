@@ -2643,7 +2643,13 @@
                 const pCount = 1500;
 
                 const loops = 2.5 + Math.random() * 2.0;
-                const maxRadius = Math.min(W(), H()) * (W() < 600 ? 0.35 : 0.4);
+                let maxRadius = Math.min(W(), H()) * (W() < 600 ? 0.35 : 0.4);
+
+                // ФИКС: Гарантируем, что верхний край спирали не залезет на меню
+                const minTop = 110; // безопасный отступ для интерфейса
+                if (cy - maxRadius < minTop) {
+                    maxRadius = cy - minTop;
+                }
                 const startAngle = Math.random() * Math.PI * 2;
                 const spiralDir = Math.random() > 0.5 ? 1 : -1;
                 const wobbleFreq = 1 + Math.random() * 2;
@@ -2725,29 +2731,6 @@
                 return bestDist;
             }
 
-            function normalizeHelixAround(index) {
-                const spacing = Z_CHAIN_SPACING();
-
-                for (let i = index + 1; i < zBalls.length; i++) {
-                    const minD = zBalls[i - 1].d + spacing;
-                    if (zBalls[i].d < minD) zBalls[i].d = minD;
-                    else break;
-                }
-
-                for (let i = index - 1; i >= 0; i--) {
-                    const maxD = zBalls[i + 1].d - spacing;
-                    if (zBalls[i].d > maxD) zBalls[i].d = maxD;
-                    else break;
-                }
-
-                if (zBalls.length > 0 && zBalls[0].d < 0) {
-                    const shift = -zBalls[0].d;
-                    for (let i = 0; i < zBalls.length; i++) {
-                        zBalls[i].d += shift;
-                    }
-                }
-            }
-
             function insertHelixProjectile(p) {
                 if (zBalls.length === 0) return false;
 
@@ -2766,12 +2749,13 @@
                 let insertIndex = zBalls.findIndex((b) => b.d > hitD);
                 if (insertIndex === -1) insertIndex = zBalls.length;
 
+                // Вставляем шарик на точное место попадания
                 zBalls.splice(insertIndex, 0, {
                     d: hitD,
                     color: p.color,
                 });
 
-                normalizeHelixAround(insertIndex);
+                // Проверяем взрыв. Мгновенное выравнивание убрано — цепочка раздвинется сама.
                 checkhelixMatches(insertIndex);
 
                 return true;
@@ -2783,26 +2767,32 @@
                 const spacing = Z_CHAIN_SPACING();
                 const oldD = zBalls.map((b) => b.d);
 
-                // Двигается только первая непрерывная группа.
+                // Хвост едет вперед
                 zBalls[0].d += Z_SPEED();
 
                 let collapseIndex = -1;
 
                 for (let i = 1; i < zBalls.length; i++) {
                     const oldGap = oldD[i] - oldD[i - 1];
-                    const currentGap = zBalls[i].d - zBalls[i - 1].d;
-                    const minD = zBalls[i - 1].d + spacing;
+                    // Смотрим, насколько шарик наезжает на предыдущий
+                    const overlap = zBalls[i - 1].d + spacing - zBalls[i].d;
 
-                    if (currentGap <= spacing) {
-                        zBalls[i].d = minD;
+                    if (overlap > 0) {
+                        // Если разница большая (только что вставили новый шар)
+                        if (overlap > Z_SPEED() * 1.5) {
+                            // Плавное скольжение: раздвигаем цепь мягко
+                            zBalls[i].d += Math.min(overlap, Z_SPEED() * 3.5);
+                        } else {
+                            // Обычное жесткое толкание хвостом
+                            zBalls[i].d += overlap;
+                        }
 
-                        if (oldGap > spacing + 0.1 && collapseIndex === -1) {
+                        // Засекаем момент, когда разрыв только что сомкнулся
+                        if (oldGap > spacing + 0.5 && collapseIndex === -1) {
                             collapseIndex = i;
                         }
-                    } else {
-                        // Как только встретили разрыв — все, дальше группы стоят.
-                        break;
                     }
+                    // Если overlap <= 0 (разрыв), то шарик просто стоит и не двигается.
                 }
 
                 if (collapseIndex !== -1) {
@@ -2835,7 +2825,8 @@
 
                 for (let i = 0; i < 10; i++) {
                     zBalls.push({
-                        d: 10 * spacing - i * spacing,
+                        // Генерируем шарики сразу по порядку: от хвоста к голове
+                        d: (i + 1) * spacing,
                         color: Math.floor(Math.random() * Z_COLORS.length),
                     });
                 }

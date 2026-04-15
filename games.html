@@ -444,8 +444,8 @@
                         <span class="mode-icon">🌀</span>
                         <div class="mode-name">Магическая спираль</div>
                         <div class="mode-desc">
-                            Аналог Зума! Стреляй цветными шариками и не дай им
-                            дойти до лунки!
+                            Стреляй цветными шариками и не дай им дойти до
+                            лунки!
                         </div>
                     </div>
                 </div>
@@ -704,61 +704,92 @@
             }
 
             // === AUDIO CONTEXT (FIX ДЛЯ GITHUB PAGES И БРАУЗЕРОВ) ===
-let audioCtx = null;
-let isAudioUnlocked = false;
+            let audioCtx = null;
+            let isAudioUnlocked = false;
 
-function ensureAudioCtx() {
-    if (!audioCtx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-    }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(e => console.log('Audio resume error:', e));
-    }
-    return audioCtx;
-}
+            function ensureAudioCtx() {
+                if (!audioCtx) {
+                    const AudioContext =
+                        window.AudioContext || window.webkitAudioContext;
+                    audioCtx = new AudioContext();
+                }
+                if (audioCtx.state === "suspended") {
+                    audioCtx
+                        .resume()
+                        .catch((e) => console.log("Audio resume error:", e));
+                }
+                return audioCtx;
+            }
 
-function unlockAudioGlobal() {
-    if (isAudioUnlocked) return;
-    
-    const ctx = ensureAudioCtx();
+            function unlockAudioGlobal() {
+                if (isAudioUnlocked) return;
 
-    if (ctx.state === 'suspended') {
-        ctx.resume();
-    }
+                const ctx = ensureAudioCtx();
 
-    // Safari Hack: проигрываем абсолютную тишину, чтобы "пробить" блокировку
-    try {
-        const buffer = ctx.createBuffer(1, 1, 22050);
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-        if (source.start) {
-            source.start(0);
-        } else {
-            source.noteOn(0); // Для очень старых версий webkit
-        }
-    } catch (e) {
-        console.log('Silent audio hack failed', e);
-    }
+                if (ctx.state === "suspended") {
+                    ctx.resume();
+                }
 
-    // Если статус движка поменялся на running, звук разблокирован
-    setTimeout(() => {
-        if (ctx.state === 'running') {
-            isAudioUnlocked = true;
-            document.removeEventListener('click', unlockAudioGlobal, true);
-            document.removeEventListener('touchstart', unlockAudioGlobal, true);
-            document.removeEventListener('keydown', unlockAudioGlobal, true);
-            document.removeEventListener('mousedown', unlockAudioGlobal, true);
-        }
-    }, 50);
-}
+                // Safari Hack: проигрываем абсолютную тишину, чтобы "пробить" блокировку
+                try {
+                    const buffer = ctx.createBuffer(1, 1, 22050);
+                    const source = ctx.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(ctx.destination);
+                    if (source.start) {
+                        source.start(0);
+                    } else {
+                        source.noteOn(0); // Для очень старых версий webkit
+                    }
+                } catch (e) {
+                    console.log("Silent audio hack failed", e);
+                }
 
-// Перехватываем ВСЕ возможные события. mousedown критически важен для десктопного Safari!
-document.addEventListener('click', unlockAudioGlobal, { capture: true, passive: true });
-document.addEventListener('touchstart', unlockAudioGlobal, { capture: true, passive: true });
-document.addEventListener('keydown', unlockAudioGlobal, { capture: true, passive: true });
-document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passive: true });
+                // Если статус движка поменялся на running, звук разблокирован
+                setTimeout(() => {
+                    if (ctx.state === "running") {
+                        isAudioUnlocked = true;
+                        document.removeEventListener(
+                            "click",
+                            unlockAudioGlobal,
+                            true,
+                        );
+                        document.removeEventListener(
+                            "touchstart",
+                            unlockAudioGlobal,
+                            true,
+                        );
+                        document.removeEventListener(
+                            "keydown",
+                            unlockAudioGlobal,
+                            true,
+                        );
+                        document.removeEventListener(
+                            "mousedown",
+                            unlockAudioGlobal,
+                            true,
+                        );
+                    }
+                }, 50);
+            }
+
+            // Перехватываем ВСЕ возможные события. mousedown критически важен для десктопного Safari!
+            document.addEventListener("click", unlockAudioGlobal, {
+                capture: true,
+                passive: true,
+            });
+            document.addEventListener("touchstart", unlockAudioGlobal, {
+                capture: true,
+                passive: true,
+            });
+            document.addEventListener("keydown", unlockAudioGlobal, {
+                capture: true,
+                passive: true,
+            });
+            document.addEventListener("mousedown", unlockAudioGlobal, {
+                capture: true,
+                passive: true,
+            });
 
             // === STARS BACKGROUND ===
             const starsCanvas = document.getElementById("stars-canvas");
@@ -2571,44 +2602,48 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
             // ===========================  HELIX MODE  ============================
             // =====================================================================
             const ZC = document.getElementById("helix-canvas");
-            let zCtx = null;
-            if (ZC) zCtx = ZC.getContext("2d");
+            const zCtx = ZC.getContext("2d");
 
-            let zAnimId = null;
             let zPath = [];
             let zPathLen = 0;
             let zBalls = [];
             let zProjectiles = [];
             let zParticles = [];
-            let zShooter = { angle: 0, color: 0, nextColor: 0 };
+            let zAnimId = null;
             let zScore = 0;
             let zGameOver = false;
             let zSpawnDist = 0;
             let zHole = { x: 0, y: 0 };
-            let zBgStars = [];
+
+            const zShooter = {
+                angle: -Math.PI / 2,
+                color: 0,
+                nextColor: 0,
+            };
 
             const Z_COLORS = [
                 "#ff4d8d",
-                "#47b8ff",
+                "#52c7ff",
                 "#52ffb1",
                 "#ffbe3d",
                 "#c777ff",
             ];
-            const Z_R = W() < 600 ? 14 : 18;
-            const Z_SPEED = W() < 600 ? 1.0 : 1.25;
-            const Z_CHAIN_SPACING = Z_R * 2 + 1;
-            const Z_AIM_STEP = Z_R * 1.15;
+
+            const Z_R = () => (W() < 600 ? 9 : 18);
+            const Z_SPEED = () => (W() < 600 ? 0.6 : 1.25);
+            const Z_CHAIN_SPACING = () => Z_R() * 2;
+            const Z_AIM_STEP = () => Z_R() * 1.15;
+            const Z_HIT_RADIUS = () => Z_R() * 1.8;
 
             function inithelixBg() {
                 zPath = [];
+
                 const cx = W() / 2;
-                // Сдвигаем центр спирали чуть вниз, чтобы не наезжала на верхнее меню
                 const cy = H() / 2 + (H() > 600 ? 30 : 20);
                 const pCount = 1500;
 
                 const loops = 2.5 + Math.random() * 2.0;
-                // Чуть уменьшаем максимальный радиус, чтобы освободить верх
-                const maxRadius = Math.min(W(), H()) * 0.4;
+                const maxRadius = Math.min(W(), H()) * (W() < 600 ? 0.35 : 0.4);
                 const startAngle = Math.random() * Math.PI * 2;
                 const spiralDir = Math.random() > 0.5 ? 1 : -1;
                 const wobbleFreq = 1 + Math.random() * 2;
@@ -2619,7 +2654,7 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
 
                 for (let i = 0; i <= pCount; i++) {
                     const t = i / pCount;
-                    const k = 1 - t; // Идет от 1 (внешний край) до 0 (центр)
+                    const k = 1 - t;
 
                     const angle =
                         startAngle + spiralDir * k * Math.PI * 2 * loops;
@@ -2628,15 +2663,11 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                         Math.sin(k * Math.PI * 2 * wobbleFreq + startAngle) *
                             wobbleAmp;
 
-                    // В самом конце k=0, поэтому radius будет строго 0
                     const radius = k * maxRadius * wobble;
-
                     const x = cx + Math.cos(angle) * radius;
                     const y = cy + Math.sin(angle) * radius;
 
-                    if (prev) {
-                        totalLen += Math.hypot(x - prev.x, y - prev.y);
-                    }
+                    if (prev) totalLen += Math.hypot(x - prev.x, y - prev.y);
 
                     zPath.push({ x, y, dist: totalLen });
                     prev = { x, y };
@@ -2677,6 +2708,109 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 };
             }
 
+            function findNearestHelixDist(x, y) {
+                let bestDist = 0;
+                let bestSq = Infinity;
+
+                for (let i = 0; i < zPath.length; i++) {
+                    const dx = x - zPath[i].x;
+                    const dy = y - zPath[i].y;
+                    const sq = dx * dx + dy * dy;
+                    if (sq < bestSq) {
+                        bestSq = sq;
+                        bestDist = zPath[i].dist;
+                    }
+                }
+
+                return bestDist;
+            }
+
+            function normalizeHelixAround(index) {
+                const spacing = Z_CHAIN_SPACING();
+
+                for (let i = index + 1; i < zBalls.length; i++) {
+                    const minD = zBalls[i - 1].d + spacing;
+                    if (zBalls[i].d < minD) zBalls[i].d = minD;
+                    else break;
+                }
+
+                for (let i = index - 1; i >= 0; i--) {
+                    const maxD = zBalls[i + 1].d - spacing;
+                    if (zBalls[i].d > maxD) zBalls[i].d = maxD;
+                    else break;
+                }
+
+                if (zBalls.length > 0 && zBalls[0].d < 0) {
+                    const shift = -zBalls[0].d;
+                    for (let i = 0; i < zBalls.length; i++) {
+                        zBalls[i].d += shift;
+                    }
+                }
+            }
+
+            function insertHelixProjectile(p) {
+                if (zBalls.length === 0) return false;
+
+                let collided = false;
+                for (let j = 0; j < zBalls.length; j++) {
+                    const pt = gethelixPoint(zBalls[j].d);
+                    if (Math.hypot(p.x - pt.x, p.y - pt.y) < Z_HIT_RADIUS()) {
+                        collided = true;
+                        break;
+                    }
+                }
+                if (!collided) return false;
+
+                const hitD = findNearestHelixDist(p.x, p.y);
+
+                let insertIndex = zBalls.findIndex((b) => b.d > hitD);
+                if (insertIndex === -1) insertIndex = zBalls.length;
+
+                zBalls.splice(insertIndex, 0, {
+                    d: hitD,
+                    color: p.color,
+                });
+
+                normalizeHelixAround(insertIndex);
+                checkhelixMatches(insertIndex);
+
+                return true;
+            }
+
+            function advanceHelixChain() {
+                if (zBalls.length === 0) return;
+
+                const spacing = Z_CHAIN_SPACING();
+                const oldD = zBalls.map((b) => b.d);
+
+                // Двигается только первая непрерывная группа.
+                zBalls[0].d += Z_SPEED();
+
+                let collapseIndex = -1;
+
+                for (let i = 1; i < zBalls.length; i++) {
+                    const oldGap = oldD[i] - oldD[i - 1];
+                    const currentGap = zBalls[i].d - zBalls[i - 1].d;
+                    const minD = zBalls[i - 1].d + spacing;
+
+                    if (currentGap <= spacing) {
+                        zBalls[i].d = minD;
+
+                        if (oldGap > spacing + 0.1 && collapseIndex === -1) {
+                            collapseIndex = i;
+                        }
+                    } else {
+                        // Как только встретили разрыв — все, дальше группы стоят.
+                        break;
+                    }
+                }
+
+                if (collapseIndex !== -1) {
+                    checkhelixMatches(collapseIndex);
+                    checkhelixMatches(collapseIndex - 1);
+                }
+            }
+
             function inithelixMode() {
                 resizeCanvas(ZC);
                 inithelixBg();
@@ -2689,8 +2823,8 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 window.zGameWon = false;
                 zSpawnDist = 0;
 
-                // Считаем строго целое число (обернули формулу в Math.floor)
-                window.zBallsToSpawn = Math.floor((zPathLen / (Z_R * 2)) * 1.8);
+                const spacing = Z_CHAIN_SPACING();
+                window.zBallsToSpawn = Math.floor((zPathLen / spacing) * 1.8);
 
                 zShooter.color = Math.floor(Math.random() * Z_COLORS.length);
                 zShooter.nextColor = Math.floor(
@@ -2701,7 +2835,7 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
 
                 for (let i = 0; i < 10; i++) {
                     zBalls.push({
-                        d: 10 * (Z_R * 2) - i * (Z_R * 2),
+                        d: 10 * spacing - i * spacing,
                         color: Math.floor(Math.random() * Z_COLORS.length),
                     });
                 }
@@ -2748,9 +2882,10 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
 
             function zMouseDown(e) {
                 if (e.button !== 0) return;
+
                 const rect = ZC.getBoundingClientRect();
 
-                if (zGameOver) {
+                if (zGameOver || window.zGameWon) {
                     const my = e.clientY - rect.top;
                     if (my > H() / 2 && my < H() / 2 + 100) inithelixMode();
                     return;
@@ -2761,10 +2896,11 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
 
             function zTouchStart(e) {
                 if (e.cancelable) e.preventDefault();
+
                 const t = e.touches[0];
                 updatehelixAngle(t.clientX, t.clientY);
 
-                if (zGameOver) {
+                if (zGameOver || window.zGameWon) {
                     const rect = ZC.getBoundingClientRect();
                     const my = t.clientY - rect.top;
                     if (my > H() / 2 && my < H() / 2 + 100) inithelixMode();
@@ -2832,71 +2968,34 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
 
             function drawhelixBall(ctx, x, y, colorIdx, isOpaque = false) {
                 const color = Z_COLORS[colorIdx];
-                const r = Z_R;
+                const r = Z_R();
 
                 ctx.save();
+                ctx.globalAlpha = isOpaque ? 1 : 0.82;
                 ctx.shadowColor = color;
                 ctx.shadowBlur = 12;
 
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, Math.PI * 2);
+
                 const grad = ctx.createRadialGradient(
-                    x - r * 0.3,
-                    y - r * 0.3,
+                    x - r * 0.35,
+                    y - r * 0.35,
                     r * 0.15,
                     x,
                     y,
                     r,
                 );
-
-                if (isOpaque) {
-                    // Плотный, насыщенный цвет для пушки и снарядов
-                    grad.addColorStop(0, "rgba(255,255,255,0.7)");
-                    grad.addColorStop(0.45, color);
-                    grad.addColorStop(1, color);
-                } else {
-                    // Полупрозрачный "желейный" эффект для змейки на фоне
-                    grad.addColorStop(0, "rgba(255,255,255,0.15)");
-                    grad.addColorStop(0.45, color + "99");
-                    grad.addColorStop(1, color + "33");
-                }
+                grad.addColorStop(0, "#ffffff");
+                grad.addColorStop(0.18, color);
+                grad.addColorStop(1, "rgba(0,0,0,0.55)");
 
                 ctx.fillStyle = grad;
                 ctx.fill();
 
-                ctx.shadowBlur = 0;
-                ctx.lineWidth = 1.4;
-                ctx.strokeStyle = isOpaque
-                    ? "rgba(255,255,255,0.6)"
-                    : "rgba(255,255,255,0.35)";
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "rgba(255,255,255,0.35)";
                 ctx.stroke();
-
-                const h1 = ctx.createRadialGradient(
-                    x - r * 0.35,
-                    y - r * 0.35,
-                    0,
-                    x - r * 0.35,
-                    y - r * 0.35,
-                    r * 0.42,
-                );
-                h1.addColorStop(
-                    0,
-                    isOpaque
-                        ? "rgba(255,255,255,0.95)"
-                        : "rgba(255,255,255,0.85)",
-                );
-                h1.addColorStop(1, "rgba(255,255,255,0)");
-                ctx.beginPath();
-                ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.42, 0, Math.PI * 2);
-                ctx.fillStyle = h1;
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.arc(x + r * 0.28, y + r * 0.24, r * 0.14, 0, Math.PI * 2);
-                ctx.fillStyle = isOpaque
-                    ? "rgba(255,255,255,0.5)"
-                    : "rgba(255,255,255,0.2)";
-                ctx.fill();
 
                 ctx.restore();
             }
@@ -2944,7 +3043,7 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 const sy = H() / 2;
 
                 for (let i = 1; i <= 18; i++) {
-                    const d = i * Z_AIM_STEP;
+                    const d = i * Z_AIM_STEP();
                     const x = sx + Math.cos(zShooter.angle) * d;
                     const y = sy + Math.sin(zShooter.angle) * d;
 
@@ -2963,7 +3062,6 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
             function getSpawnColor() {
                 let color = Math.floor(Math.random() * Z_COLORS.length);
 
-                // Чаще формируем пары, но не длинные одноцветные хвосты
                 if (zBalls.length >= 1) {
                     const c1 = zBalls[0].color;
                     const c2 = zBalls.length >= 2 ? zBalls[1].color : -1;
@@ -2989,12 +3087,9 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
             function helixLoop() {
                 resizeCanvas(ZC);
                 const ctx = zCtx;
-                const cx = zHole.x,
-                    cy = zHole.y;
 
                 ctx.clearRect(0, 0, W(), H());
 
-                // 1. ФОН
                 const time = Date.now() * 0.0005;
                 const bgGrad = ctx.createRadialGradient(
                     W() / 2,
@@ -3013,6 +3108,7 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 ctx.save();
                 ctx.globalCompositeOperation = "lighter";
                 ctx.globalAlpha = 0.5;
+
                 const nebGrad1 = ctx.createRadialGradient(
                     W() / 2 + Math.sin(time) * 150,
                     H() / 2 + Math.cos(time * 0.8) * 150,
@@ -3040,7 +3136,6 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 ctx.fillRect(0, 0, W(), H());
                 ctx.restore();
 
-                // 2. СПИРАЛЬ
                 ctx.beginPath();
                 ctx.moveTo(zPath[0].x, zPath[0].y);
                 for (let i = 1; i < zPath.length - 1; i++) {
@@ -3057,71 +3152,36 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 ctx.lineJoin = "round";
 
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-                ctx.lineWidth = Z_R * 2 + 8;
+                ctx.lineWidth = Z_R() * 2 + 8;
                 ctx.stroke();
 
                 ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
-                ctx.lineWidth = Z_R * 2 - 2;
+                ctx.lineWidth = Z_R() * 2 - 2;
                 ctx.stroke();
 
-                drawhelixHole(ctx, zHole.x, zHole.y, Z_R);
+                drawhelixHole(ctx, zHole.x, zHole.y, Z_R());
 
-                // 3. ФИЗИКА И ШАРИКИ
                 if (!zGameOver && !window.zGameWon) {
                     if (window.zBallsToSpawn > 0) {
-                        zSpawnDist += Z_SPEED;
-                        if (zSpawnDist >= Z_R * 2) {
-                            let newColor = Math.floor(
-                                Math.random() * Z_COLORS.length,
-                            );
-                            if (zBalls.length >= 1) {
-                                let prev1 = zBalls[0].color;
-                                let prev2 =
-                                    zBalls.length >= 2 ? zBalls[1].color : -1;
-                                if (prev1 !== prev2 && Math.random() < 0.8)
-                                    newColor = prev1;
-                                else if (
-                                    prev1 === prev2 &&
-                                    Math.random() < 0.85
-                                ) {
-                                    const others = [0, 1, 2, 3, 4].filter(
-                                        (c) => c !== prev1,
-                                    );
-                                    newColor =
-                                        others[
-                                            Math.floor(
-                                                Math.random() * others.length,
-                                            )
-                                        ];
-                                }
-                            }
+                        zSpawnDist += Z_SPEED();
+                        if (zSpawnDist >= Z_CHAIN_SPACING()) {
+                            const newColor = getSpawnColor();
+                            const startD =
+                                zBalls.length > 0
+                                    ? zBalls[0].d - Z_CHAIN_SPACING()
+                                    : 0;
 
-                            let startD =
-                                zBalls.length > 0 ? zBalls[0].d - Z_R * 2 : 0;
-                            zBalls.unshift({ d: startD, color: newColor });
+                            zBalls.unshift({
+                                d: startD,
+                                color: newColor,
+                            });
 
-                            zSpawnDist -= Z_R * 2;
+                            zSpawnDist -= Z_CHAIN_SPACING();
                             window.zBallsToSpawn--;
                         }
                     }
 
-                    if (zBalls.length > 0) {
-                        zBalls[0].d += Z_SPEED;
-                        for (let i = 1; i < zBalls.length; i++) {
-                            const gap = zBalls[i].d - zBalls[i - 1].d;
-                            if (gap < Z_R * 2) {
-                                zBalls[i].d = zBalls[i - 1].d + Z_R * 2;
-                            } else {
-                                zBalls[i].d += Z_SPEED * 0.4;
-                                if (
-                                    gap < Z_R * 6 &&
-                                    zBalls[i].color === zBalls[i - 1].color
-                                ) {
-                                    zBalls[i - 1].d += Z_SPEED * 2.5;
-                                }
-                            }
-                        }
-                    }
+                    advanceHelixChain();
                 }
 
                 if (
@@ -3133,46 +3193,44 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 }
 
                 for (let i = 0; i < zBalls.length; i++) {
-                    let pt = gethelixPoint(zBalls[i].d);
-                    // Рисуем полупрозрачные (false)
+                    const pt = gethelixPoint(zBalls[i].d);
                     drawhelixBall(ctx, pt.x, pt.y, zBalls[i].color, false);
-                    if (zBalls[i].d >= zPathLen - Z_R) zGameOver = true;
+
+                    if (zBalls[i].d >= zPathLen - Z_R()) {
+                        zGameOver = true;
+                    }
                 }
 
                 for (let i = zProjectiles.length - 1; i >= 0; i--) {
-                    let p = zProjectiles[i];
+                    const p = zProjectiles[i];
                     p.x += p.vx;
                     p.y += p.vy;
-                    // Летящий снаряд - НЕпрозрачный (true)
+
                     drawhelixBall(ctx, p.x, p.y, p.color, true);
 
-                    let hit = false;
-                    for (let j = 0; j < zBalls.length; j++) {
-                        let pt = gethelixPoint(zBalls[j].d);
-                        if (Math.hypot(p.x - pt.x, p.y - pt.y) < Z_R * 1.8) {
-                            zBalls.splice(j, 0, {
-                                d: zBalls[j].d + Z_R * 2,
-                                color: p.color,
-                            });
-                            checkhelixMatches(j);
-                            hit = true;
-                            break;
-                        }
-                    }
-                    if (hit || p.x < 0 || p.x > W() || p.y < 0 || p.y > H()) {
+                    const hit =
+                        insertHelixProjectile(p) ||
+                        p.x < 0 ||
+                        p.x > W() ||
+                        p.y < 0 ||
+                        p.y > H();
+
+                    if (hit) {
                         zProjectiles.splice(i, 1);
                     }
                 }
 
                 for (let i = zParticles.length - 1; i >= 0; i--) {
-                    let p = zParticles[i];
+                    const p = zParticles[i];
                     p.x += p.vx;
                     p.y += p.vy;
                     p.life -= 0.03;
+
                     if (p.life <= 0) {
                         zParticles.splice(i, 1);
                         continue;
                     }
+
                     ctx.globalAlpha = p.life;
                     ctx.fillStyle = p.color;
                     ctx.beginPath();
@@ -3181,45 +3239,28 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                     ctx.globalAlpha = 1;
                 }
 
-                // 4. ТРАЕКТОРИЯ
-                ctx.save();
-                ctx.globalAlpha = 0.6;
-                for (let i = 2; i <= 20; i++) {
-                    const d = i * (Z_R * 1.5);
-                    const dotX = W() / 2 + Math.cos(zShooter.angle) * d;
-                    const dotY = H() / 2 + Math.sin(zShooter.angle) * d;
-                    if (dotX < 0 || dotX > W() || dotY < 0 || dotY > H()) break;
-                    ctx.beginPath();
-                    ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
-                    ctx.fillStyle = "#cccccc";
-                    ctx.fill();
-                }
-                ctx.restore();
+                drawhelixAimDots(ctx);
 
-                // 5. ПУШКА
                 ctx.save();
                 ctx.translate(W() / 2, H() / 2);
                 ctx.rotate(zShooter.angle);
+
                 ctx.fillStyle = "#444";
                 ctx.beginPath();
                 if (ctx.roundRect) ctx.roundRect(-10, -10, 40, 20, 10);
                 else ctx.rect(-10, -10, 40, 20);
                 ctx.fill();
-                // Снаряд в пушке - НЕпрозрачный (true)
+
                 drawhelixBall(ctx, 0, 0, zShooter.color, true);
                 ctx.restore();
 
-                // 6. ИНТЕРФЕЙС И СЧЕТЧИК
                 ctx.fillStyle = "#fff";
                 ctx.font = "bold 12px sans-serif";
                 ctx.textAlign = "center";
                 ctx.fillText("СЛЕД", W() / 2, 30);
 
-                // Подсказка следующего шара - НЕпрозрачный (true)
                 drawhelixBall(ctx, W() / 2, 55, zShooter.nextColor, true);
 
-                // Считаем общее число (все живые шары на поле + те, что еще выедут)
-                // Оно будет уменьшаться только при реальном расстреле
                 const totalRemaining = Math.max(
                     0,
                     window.zBallsToSpawn + zBalls.length,
@@ -3228,7 +3269,6 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                 ctx.font = "bold 12px sans-serif";
                 ctx.fillText("ОСТАЛОСЬ: " + totalRemaining, W() / 2, 88);
 
-                // 7. ЭКРАН ПОБЕДЫ / ПОРАЖЕНИЯ
                 if (zGameOver || window.zGameWon) {
                     ctx.fillStyle = "rgba(0,0,0,0.85)";
                     ctx.fillRect(0, 0, W(), H());
@@ -3252,6 +3292,7 @@ document.addEventListener('mousedown', unlockAudioGlobal, { capture: true, passi
                         ctx.roundRect(W() / 2 - 120, H() / 2 + 30, 240, 60, 15);
                     else ctx.rect(W() / 2 - 120, H() / 2 + 30, 240, 60);
                     ctx.fill();
+
                     ctx.strokeStyle = "rgba(255,255,255,0.5)";
                     ctx.lineWidth = 2;
                     ctx.stroke();

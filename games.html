@@ -2796,7 +2796,7 @@
                         }
 
                         // Засекаем момент, когда разрыв только что сомкнулся
-                        if (oldGap > spacing + 0.5 && collapseIndex === -1) {
+                        if (oldGap > spacing + 0.01 && collapseIndex === -1) {
                             collapseIndex = i;
                         }
                     }
